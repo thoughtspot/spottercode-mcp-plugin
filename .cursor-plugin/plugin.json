@@ -1,0 +1,8 @@
+{
+  "name": "spottercode",
+  "description": "ThoughtSpot developer documentation — search Visual Embed SDK, REST API v2, and developer guides through MCP-compatible clients.",
+  "mcpServers": "../.cursor-mcp.json",
+  "author": {
+    "name": "ThoughtSpot"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "spottercode": {
+      "type": "http",
+      "url": "https://spottercode.thoughtspot.app/mcp"
+    }
+  }
+}
