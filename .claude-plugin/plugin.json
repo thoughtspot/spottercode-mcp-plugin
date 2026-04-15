@@ -6,6 +6,6 @@
     "name": "ThoughtSpot",
     "url": "https://thoughtspot.com"
   },
-  "homepage": "https://github.com/thoughtspot/spottercode-mcp-plugin-private",
+  "homepage": "https://github.com/thoughtspot/spottercode-mcp-plugin",
   "license": "MIT"
 }
