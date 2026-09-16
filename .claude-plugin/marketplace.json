@@ -1,0 +1,21 @@
+{
+  "name": "spottercode",
+  "owner": {
+    "name": "ThoughtSpot",
+    "url": "https://thoughtspot.com"
+  },
+  "plugins": [
+    {
+      "name": "spottercode",
+      "source": "./",
+      "description": "ThoughtSpot developer documentation — search Visual Embed SDK, REST API v2, and developer guides",
+      "version": "1.0.0",
+      "author": {
+        "name": "ThoughtSpot",
+        "url": "https://thoughtspot.com"
+      },
+      "homepage": "https://github.com/thoughtspot/spottercode-mcp-plugin",
+      "license": "MIT"
+    }
+  ]
+}
