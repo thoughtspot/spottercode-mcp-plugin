@@ -7,7 +7,6 @@ Configuration for integrating the ThoughtSpot developer documentation MCP server
 - **Get Visual Embed SDK Docs** — Types, interfaces, configuration, events, authentication, and CSS theming
 - **Get REST API Docs** — Endpoint specs, request/response schemas, authentication, and Java/TypeScript SDK guides
 - **Get Developer Docs** — Platform features, SSO/SAML, deployment, TML, and general ThoughtSpot guidance
-- **Migrate TML Copies to Publishing** — Guided procedure for moving per-tenant Model copies onto Orgs Publishing, assessing from two TML exports before anything is written
 
 ## Prerequisites
 
