@@ -1,1 +1,4 @@
 .DS_Store
+
+# Migration runs: exports, backups, ledgers (customer data)
+migration/

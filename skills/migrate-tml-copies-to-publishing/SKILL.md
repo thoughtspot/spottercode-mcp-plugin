@@ -28,9 +28,14 @@ Column Security Rules on the copy, or a different database, table name or connec
 
 ## Requirements
 
-- `execute-thoughtspot-code` with an **`org_identifier`** parameter. The browser sign-in
-  always lands in the user's default Org, so without it the secondary Org is unreachable.
-  If the tool has no `org_identifier`, stop and say so.
+- A way to run `execute-thoughtspot-code` in **each** Org. The browser sign-in always lands
+  in the user's default Org, so use one of:
+  - the tool's **`org_identifier`** parameter, if it has one; or
+  - **one MCP server per Org**, each signed in with a token for that Org (the user names
+    which server is which Org). Before the first call, confirm each server's Org with
+    `GET /api/rest/2.0/auth/session/user` (`current_org`), and stop if one is wrong.
+
+  If neither is available, stop and say so.
 - The user is an administrator in the Primary Org **and** the secondary Org.
 - Inputs: the governed Model's TML export (Primary Org), the copy's TML export (secondary
   Org) — both exported **with dependencies**, from the UI or REST — and the secondary Org's
@@ -40,7 +45,8 @@ Column Security Rules on the copy, or a different database, table name or connec
 
 - **GUIDs only.** The copy and the published Model share a name in the secondary Org, and a
   lookup by name returns `DUPLICATE_OBJECT_FOUND`.
-- **Name the Org on every call.** A read in the wrong Org returns an empty list, not an error.
+- **Name the Org on every call** (or use that Org's server). A read in the wrong Org returns
+  an empty list, not an error.
 - **One write step per run, one approval per run.** Show the exact code before each write.
   Read the current state first and write only what is missing, so a re-run is safe.
 - **Stop at the first failed check.** Every step leaves a state that works.
@@ -61,6 +67,7 @@ Column Security Rules on the copy, or a different database, table name or connec
 | 5 | Back up and repoint each Answer | secondary | yes |
 | 6 | Verify | secondary | no |
 | 7 | Delete the copy, its Tables and connection | secondary | yes |
+| — | Write the report | — (local) | no |
 
 3b runs before 3a so both secondary-Org steps come before the switch; it only has to
 precede 3c.
@@ -95,12 +102,17 @@ Archive both zips unchanged in `inputs/` with SHA-256 checksums.
   `include_dependent_objects: true`, `dependent_objects_record_size: -1`,
   `dependent_object_version: "V2"`. Answers arrive under `QUESTION_ANSWER_BOOK`. A string in
   `dependent_objects` means the lookup failed — stop. Any other dependent type → stop.
-- The same lookup on each of the copy's Tables must return **only the copy**. Anything else
-  is content built directly on a Table → stop.
+  If `hasInaccessibleDependents` is true and `areInaccessibleDependentsReturned` is not,
+  some dependents are missing from the list → stop.
+- The same lookup on each of the copy's Tables. A Table can also list content built on the
+  copy (column-level, indirect). For each Table dependent other than the copy, read its TML:
+  if `tables[]` references only the copy Model, it is indirect — continue. If it references
+  the Table's GUID, it is content built directly on a Table → stop.
 - Per Answer: export its TML; the `[…]` tokens in `search_query` must all be copy columns.
 - Sharing snapshot: `security/metadata/fetch-permissions` with `permission_type: "DEFINED"`
   on the copy and on each Answer.
 - Data fingerprint per Answer: `metadata/answer/data`, rows sorted, SHA-256.
+- Save the raw dependents responses in the migration folder.
 
 ### 3b. Re-key the copy's `obj_id`s (secondary Org)
 
@@ -117,8 +129,28 @@ connection clashes as well.
 
 ### 3a. Variable for the schema (Primary Org)
 
-If the governed Tables already use a variable (`schema: ${…}` in their TML), only add this
-Org's value. Otherwise, in this order:
+**Case A — the governed Tables already use a variable** (`schema: ${…}` in their TML, e.g.
+already published to another Org). Create nothing and parameterize nothing:
+
+1. Re-read the variable's values. This Org already has the copy's schema → skip the step;
+   a different value → stop and ask.
+2. `template/variables/update-values` — one `ADD` of the copy's schema, scoped to this Org
+   only:
+
+   ```json
+   { "variable_assignment": [{ "variable_identifier": "<variable guid>", "variable_values": ["<schema>"], "operation": "ADD" }],
+     "variable_value_scope": [{ "org_identifier": "<org>" }] }
+   ```
+
+   `variable_value_scope` is **top-level**, next to `variable_assignment` — not inside it
+   (400: *"Field variable_value_scope is not defined by type VariableUpdateAssignmentInput"*).
+   One call per Org.
+3. Read back all values: the other Orgs' values are unchanged.
+4. Run a Primary check query on the governed Model: Primary's numbers are unchanged.
+
+Undo: remove this Org's value.
+
+**Case B — the governed Tables use a literal schema.** In this order:
 
 1. `template/variables/create` — `{ "type": "TABLE_MAPPING", "name": "<name>" }`, **no
    `data_type`** (refused for this type).
@@ -127,12 +159,11 @@ Org's value. Otherwise, in this order:
    decided from the Tables' bindings and the variable's values, never from the name.
 2. `template/variables/update-values` — `operation: "ADD"` only, never `REPLACE` or `RESET`.
    **Primary's value first** (the current literal), then the secondary Org's (the copy's
-   schema), each with `variable_value_scope: [{ "org_identifier": "<org>" }]`.
-3. `metadata/parameterize` per Table — `metadata_type: "LOGICAL_TABLE"`,
-   `field_type: "ATTRIBUTE"`, `field_name: "schemaName"`.
-4. Read back the values, and confirm Primary's data is unchanged.
-
-If the secondary Org already has a different value → stop and ask.
+   schema), one call each, same body as case A step 2.
+3. `metadata/parameterize` per Table:
+   `{ "metadata_type": "LOGICAL_TABLE", "metadata_identifier": "<table guid>", "field_type": "ATTRIBUTE", "field_name": "schemaName", "variable_identifier": "<variable name or guid>" }`.
+4. Read back the values, and run a Primary check query on the governed Model: Primary's
+   numbers are unchanged.
 
 ### 3c. Publish (Primary Org)
 
@@ -184,8 +215,9 @@ an Answer as a **non-admin** member of a granted group and confirm the numbers.
 
 ### 7. Delete the copy (secondary Org)
 
-Only after Step 6 passes and the user confirms. Re-check: zero dependents, the copy
-unchanged since the archive, no new sharing. Then, each after an identity check (the copy's
+Only after Step 6 passes and the user confirms. Re-check: zero dependents, no new sharing,
+and the copy unchanged since the archive — compare its live TML with `inputs/`, ignoring
+`obj_id` lines. Don't use the modified time: the 3b re-key changes it. Then, each after an identity check (the copy's
 GUID, not a published object, `obj_id` ending `__copy_<org>`):
 
 1. the copy Model — `metadata/delete`
@@ -195,13 +227,21 @@ GUID, not a published object, `obj_id` ending `__copy_<org>`):
 
 Confirm all are gone and the Answers still return their numbers.
 
+### Report
+
+Write `migration/<org>/<model>/report.md` and give the user its path. Include: the Orgs and
+Models (names and GUIDs); the Step 1 verdict; each step's result; the numbers before and
+after for every Answer, and Primary's check query; the sharing carried; what was deleted;
+anything disclosed (renamed columns, `MODIFY` lowered to `READ_ONLY`); and the rollback
+files (`inputs/`, `backup/`, `ledger.json`).
+
 ## Rollback
 
 | Stopped after | Undo |
 |---|---|
 | 1–2 | nothing written |
 | 3b | `update-obj-id` back to the old values |
-| 3a | unparameterize the Tables, delete the variable (if created) |
+| 3a | case A: remove this Org's value; case B: unparameterize the Tables, delete the variable |
 | 3c | `security/metadata/unpublish` from the Org — before Step 5 only |
 | 4 | share `NO_ACCESS` for each principal added |
 | 5 | re-import each backup |
