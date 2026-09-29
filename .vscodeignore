@@ -1,0 +1,13 @@
+src/**
+!src/extension.ts
+.gitignore
+.vscode/**
+node_modules/**
+**/*.map
+**/*.ts
+.npmrc
+.github/**
+.git/**
+.gitignore
+README.md
+CHANGELOG.md

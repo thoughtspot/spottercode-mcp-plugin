@@ -1,0 +1,50 @@
+{
+  "name": "spottercode",
+  "displayName": "SpotterCode",
+  "description": "ThoughtSpot developer documentation and MCP plugin metadata for embedding, REST API and platform guidance.",
+  "version": "1.0.0",
+  "publisher": "thoughtspot",
+  "license": "MIT",
+  "homepage": "https://github.com/thoughtspot/spottercode-mcp-plugin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thoughtspot/spottercode-mcp-plugin"
+  },
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "thoughtspot",
+    "mcp",
+    "developer docs",
+    "embed",
+    "rest api"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCommand:spottercode.openReadme"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "spottercode.openReadme",
+        "title": "SpotterCode: Open README"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/vscode": "^1.94.0",
+    "@vscode/vsce": "^3.2.2",
+    "typescript": "^5.7.2"
+  }
+}

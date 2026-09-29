@@ -21,15 +21,22 @@ Before integrating SpotterCode:
 
 ### Claude Code
 
-Clone the plugin and load it:
+**Option 1 — From the marketplace:**
 
 ```bash
-git clone https://github.com/thoughtspot/thoughtspot-mcp-plugin.git
-cd thoughtspot-mcp-plugin
+/plugin marketplace add thoughtspot/spottercode-mcp-plugin
+/plugin install spottercode
+```
+
+**Option 2 — Clone and load locally:**
+
+```bash
+git clone https://github.com/thoughtspot/spottercode-mcp-plugin.git
+cd spottercode-mcp-plugin
 claude --plugin-dir ./
 ```
 
-Or add it globally:
+**Option 3 — Add the MCP server directly (no plugin/skills):**
 
 ```bash
 claude mcp add spottercode --transport http https://spottercode.thoughtspot.app/mcp
