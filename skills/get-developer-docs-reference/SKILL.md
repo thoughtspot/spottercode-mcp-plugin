@@ -1,4 +1,5 @@
 ---
+name: get-developer-docs-reference
 description: Guidance for searching general ThoughtSpot developer documentation
 ---
 

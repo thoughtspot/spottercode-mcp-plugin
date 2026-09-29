@@ -1,4 +1,5 @@
 ---
+name: get-rest-api-reference
 description: Guidance for working with the ThoughtSpot REST API v2
 ---
 

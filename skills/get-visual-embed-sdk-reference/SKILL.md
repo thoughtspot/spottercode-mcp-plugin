@@ -1,4 +1,5 @@
 ---
+name: get-visual-embed-sdk-reference
 description: Guidance for embedding ThoughtSpot content in web applications using the Visual Embed SDK
 ---
 

@@ -1,8 +1,13 @@
 {
   "name": "spottercode",
   "description": "ThoughtSpot developer documentation — search Visual Embed SDK, REST API v2, and developer guides through MCP-compatible clients.",
-  "mcpServers": "../.cursor-mcp.json",
+  "version": "1.0.0",
   "author": {
     "name": "ThoughtSpot"
-  }
+  },
+  "homepage": "https://github.com/thoughtspot/spottercode-mcp-plugin",
+  "license": "MIT",
+  "keywords": ["thoughtspot", "mcp", "embed", "rest-api"],
+  "skills": "./skills/",
+  "mcpServers": "./.cursor-mcp.json"
 }
