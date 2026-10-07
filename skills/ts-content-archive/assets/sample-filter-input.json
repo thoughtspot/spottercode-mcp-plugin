@@ -1,0 +1,49 @@
+{
+	"todayEpochMs": 1732400000000,
+	"activeGuids": ["guid-recent-1"],
+	"metadata": [
+		{
+			"guid": "guid-recent-1",
+			"name": "Q4 Executive Dashboard",
+			"type": "LIVEBOARD",
+			"authorGuid": "author-jane",
+			"authorName": "jane.doe",
+			"tags": [],
+			"modifiedEpochMs": 1732300000000
+		},
+		{
+			"guid": "guid-stale-1",
+			"name": "Q3 Exploratory Dashboard",
+			"type": "LIVEBOARD",
+			"authorGuid": "author-jane",
+			"authorName": "jane.doe",
+			"tags": [],
+			"modifiedEpochMs": 1720000000000
+		},
+		{
+			"guid": "guid-stale-2",
+			"name": "ad-hoc churn check",
+			"type": "ANSWER",
+			"authorGuid": "author-john",
+			"authorName": "john.smith",
+			"tags": [{ "id": "tag-1", "name": "reviewed" }],
+			"modifiedEpochMs": 1712000000000
+		},
+		{
+			"guid": "guid-system-owned",
+			"name": "Internal Usage Report",
+			"type": "ANSWER",
+			"authorGuid": "author-tsadmin",
+			"authorName": "tsadmin",
+			"tags": [],
+			"modifiedEpochMs": 1700000000000
+		}
+	],
+	"recentModifiedDays": 100,
+	"systemAuthorGuids": ["author-tsadmin"],
+	"ignoreTags": ["reviewed"],
+	"onlyAuthorGuids": null,
+	"ignoreAuthorGuids": null,
+	"onlyGroupAuthorGuids": null,
+	"ignoreGroupAuthorGuids": null
+}
