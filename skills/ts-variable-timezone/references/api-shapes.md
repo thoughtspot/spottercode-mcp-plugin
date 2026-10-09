@@ -7,7 +7,16 @@ not yet confirmed against a live response are tracked in [open-items.md](open-it
 
 ---
 
-## Search variables (Search Flow, Step 6 Remove lookup)
+## Get current user info (Preflight)
+
+No body. Used to confirm the session works and to learn which instance the calls run
+against. `{instance}` is the host of the request URL (or tool context), not a response
+field. If the host isn't visible, `{instance}` stays unset and the `Cluster:` lines are
+omitted.
+
+---
+
+## Search variables (Preflight, Search Flow, Step 5 lookup)
 
 ```json
 {
@@ -21,8 +30,13 @@ not yet confirmed against a live response are tracked in [open-items.md](open-it
 The response is an array. `data[0]` is the `ts_user_timezone` record, and its `values`
 array holds the assignments. Each assignment carries `org_identifier`, `principal_type`
 (`"USER"` or absent/null for org level), `principal_identifier`, and the value itself
-(`value` or `assigned_values`, see open item 1). Pagination is not needed because the
-identifier is given.
+(`value` or `assigned_values`, see open item 1).
+
+Paginate with `record_offset` until a page is shorter than `record_size` (an empty page
+also ends the loop). Merge the `values` arrays of every `ts_user_timezone` record across
+all pages, dropping exact duplicates. Never stop after the first page. If no
+`ts_user_timezone` record comes back at all, the variable does not exist: stop with the
+Preflight message in SKILL.md.
 
 ---
 
@@ -108,6 +122,7 @@ is:
 ```
 
 For REPLACE, every entry carries `{timezone_value}`. For REMOVE, each entry carries the
-value currently assigned to that exact scope, as found in the search-variables lookup.
+value currently assigned to that exact scope, as found in the Step 5 search-variables
+lookup. Entries with no current assignment are skipped, not sent.
 
 Success is HTTP 204 with an empty body. Failure returns JSON with an `error` key.

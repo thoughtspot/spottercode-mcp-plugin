@@ -28,6 +28,15 @@ name (`sub_groups`) and that `users` lists direct members only.
 
 cs_tools assigns one object per call (15 at a time). This skill batches up to 100 objects
 per call, because the operation accepts an array. Confirm the upper limit, and whether a
-batch fails as a whole when one object can't be tagged.
+batch fails as a whole when one object can't be tagged. Until confirmed, a failed batch
+is retried one object per call (see [modes.md](modes.md#batch-failures)).
+
+[Record result here]
+
+## 4. Delete metadata on a TAG GUID — UNVERIFIED
+
+cs_tools deletes the tag by sending its GUID to delete metadata, without a type. Confirm
+this works on current REST v2.0 releases. Until confirmed, the skill falls back to the
+delete tag operation when delete metadata rejects it.
 
 [Record result here]

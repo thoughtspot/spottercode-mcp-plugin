@@ -4,7 +4,7 @@ description: Promote formulas and parameters from a saved ThoughtSpot Answer int
 compatibility: Requires a ThoughtSpot instance and a user with MODIFY or FULL access on the target Model. Formulas only — sets (cohorts) and Liveboard-embedded Answers are out of scope.
 metadata:
     author: thoughtspot
-    version: '1.0'
+    version: '1.2'
 allowed-tools: execute-thoughtspot-code get-rest-api-reference Bash
 ---
 
@@ -23,8 +23,18 @@ questions into a single prompt to cut round-trips.
 **Before every call, resolve the operation and its exact path/shape with
 `get-rest-api-reference`. Do not trust a remembered path.** The operation names below
 come from the REST v2 OpenAPI spec. This document deliberately does not print paths.
-Once an operation is resolved, use `execute-thoughtspot-code` to make the call. How the
-bearer token is obtained and attached is the consumer's responsibility, not this skill's.
+Once an operation is resolved, use `execute-thoughtspot-code` to make the call. Sign-in is
+handled by the MCP connection: never ask the user for a URL, token or credentials.
+
+**Tools check, before anything else (Step 0 included).** Make one `get-rest-api-reference`
+call. The tools may carry a server prefix (`mcp__<server>__…`) or need loading first. If
+either tool can't be found, its server failed to connect, or the call is rejected for
+authentication, reply with only this message and stop:
+
+> This skill needs the ThoughtSpot Spotter Code MCP server, which isn't connected. Connect it in your MCP client, then try again.
+
+Don't name servers, quote errors or status codes, mention tokens, headers, OAuth or
+config, or show any step.
 
 ---
 
@@ -41,8 +51,8 @@ bearer token is obtained and attached is the consumer's responsibility, not this
 
 ## Prerequisites
 
-- A valid bearer token for the target instance. If Orgs are enabled, it must already be
-  scoped to the Org holding the Answer and Model.
+- A connected Spotter Code MCP server. It handles sign-in, so never ask for an instance
+  URL, token or credentials. It must be signed in to the Org holding the Answer and Model.
 - **MODIFY** or **FULL** access on the target Model.
 - A way to run `scripts/promote_formulas.ts`: a shell with Node (`npx tsx`, listed as
   `Bash` in `allowed-tools`), or `execute-thoughtspot-code` with the script's functions
@@ -52,7 +62,7 @@ bearer token is obtained and attached is the consumer's responsibility, not this
 
 ## Step 0 — Overview
 
-On skill invocation, display this plan before doing any work:
+Once the tools check passes, display this plan before doing any other work:
 
 ---
 
@@ -83,7 +93,7 @@ Do not begin Step 1 until the user confirms.
 ## Step 1 — Confirm Session
 
 Call **get current user info**. On a non-2xx response, stop with `Could not verify your
-ThoughtSpot session ({status_code}). Re-authenticate and try again.` Save the user's
+ThoughtSpot session ({status_code}). Reconnect the Spotter Code MCP server and try again.` Save the user's
 `id` as `{current_user_id}` (used in Step 5), and `current_org.name` as `{org_name}`.
 
 ---
@@ -97,7 +107,10 @@ Which saved Answer contains the formula(s) you want to promote?
 ```
 
 - **Search term**: call **search metadata** for type `ANSWER` with name pattern
-  `%{search_term}%`. Show a numbered list of names, and let the user pick or search again.
+  `%{search_term}%`. Fetch every page (see
+  [references/api-shapes.md](references/api-shapes.md)). Show a numbered list of up to
+  50 names, and let the user pick or search again. If there are more, add:
+  `Showing 50 of {total}. Narrow the search term to see the rest.`
 - **GUID**: call **search metadata** for that identifier. Confirm it is an `ANSWER`.
 
 Save `{answer_guid}` and `{answer_name}`. Only standalone saved Answers are supported.
@@ -198,24 +211,30 @@ Save `{selected_formula_names}`.
 ## Step 5 — Find and Check the Target Model
 
 **Auto-detect first.** `{analysis}.dataSourceGuid` is the Answer's data source. Call
-**search metadata** for it with headers included. If found, ask:
+**search metadata** for it with headers included. Label it `[MODEL]` or `[WORKSHEET]`
+from the header's `contentUpgradeId` / `worksheetVersion` (see
+[references/api-shapes.md](references/api-shapes.md)). If found, ask:
 
 ```
-The Answer is based on "{data_source_name}". Promote the formula(s) to it? (Y / N):
+The Answer is based on {label} "{data_source_name}". Promote the formula(s) to it? (Y / N):
 ```
 
 On N, or if the lookup fails, ask for a name. Call **search metadata** for type
-`LOGICAL_TABLE` with that name pattern, show the results, and let the user pick.
+`LOGICAL_TABLE` with that name pattern and the subtypes filter set to `WORKSHEET`, so
+Tables and Views are left out (open-items.md, item 7). Paginate and cap the list as in
+Step 2. Show each result with its `[MODEL]` or `[WORKSHEET]` label, and let the user
+pick. A `[WORKSHEET]` can't take promoted formulas. Say so and ask for another pick.
 
-Save `{model_guid}`, `{model_name}`, and the header's `author`.
+Save `{model_guid}`, `{model_name}`, and the header's `author` and `authorDisplayName`
+(`authorName` if absent) as `{owner_name}`.
 
 **Ownership check.** The search response carries no explicit permission field (see
 open-items.md, item 2). Use ownership as a proxy. If `author` isn't
 `{current_user_id}`, warn:
 
 ```
-You are not the owner of "{model_name}". Without MODIFY or FULL access, the import in
-Step 9 will fail with a permission error. Continue anyway? (Y / N):
+You are not the owner of "{model_name}" (owned by {owner_name}). Without MODIFY or FULL
+access, the import in Step 9 will fail with a permission error. Continue anyway? (Y / N):
 ```
 
 N → stop.
@@ -269,7 +288,7 @@ Build `input.json` as documented in the script's `PromoteInput` type:
 - `selectedFormulaNames`, `includeAuto`, `includeDeps`
 - `excludeParams`, `excludeFormulas`, `exprOverrides`
 - `duplicatePolicy`
-- `refOverrides` (starts as `{}`)
+- `refOverrides` and `nameOverrides` (both start as `{}`)
 
 Without a shell, use path B in the script header: paste the functions into
 `execute-thoughtspot-code` and call `promoteFormulas(input)`. Never re-implement the
@@ -280,8 +299,18 @@ paramsSkipped, unresolvedRefs, mergedTml, _ranVia}`. `_ranVia` only appears if t
 script ran. If asked to confirm that, quote it back verbatim, or say plainly that it is
 absent.
 
-**Nothing to promote** (`mergedTml` is null): every selected formula was a duplicate.
-List `skipped`, suggest re-running with Overwrite, and stop.
+**No formulas selected** (the script fails with `No formulas selected for promotion.`):
+the selection was empty. Either A matched only `[auto]` formulas, or every selected
+formula was skipped. Say so, and offer to return to Step 4 or stop.
+
+**Rename errors** (`nameOverrides`). `nameOverrides key(s) not found in answer: ...`
+means a key isn't an Answer formula name; fix the key (keys are Answer names). `nameOverrides:
+"A" and "B" would both be promoted as "X"` means two promoted formulas would share a
+Model name. Tell the user, ask for a different name for the renamed one, update
+`nameOverrides`, and re-run.
+
+**All duplicates** (`mergedTml` is null): every selected formula already exists in the
+Model and the policy is Skip. List `skipped`, suggest re-running with Overwrite, and stop.
 
 **Unresolved references.** For each entry in `unresolvedRefs`, ask:
 
@@ -294,9 +323,9 @@ List `skipped`, suggest re-running with Overwrite, and stop.
 
 Look the answer up in `{model_tml}`'s `columns[]` and `formulas[]` (names are
 case-sensitive). Record it in `refOverrides` as `{"<ref without brackets>":
-"<column name or TABLE::column>"}`. On S, drop the formula from
-`selectedFormulaNames`. Re-run the script, and repeat until `unresolvedRefs` is empty.
-Never import with unresolved references.
+"<column name or TABLE::column>"}`. On S, add the formula's name to `excludeFormulas`.
+That works for an A selection and for dependency-added formulas too. Re-run the script,
+and repeat until `unresolvedRefs` is empty. Never import with unresolved references.
 
 ---
 
@@ -317,6 +346,9 @@ Ready to update "{model_name}":
   Parameters to add / overwrite:      (paramsAdded / paramsOverwritten, if any)
     + today    DATE
 
+  Parameters kept as in the Model:    (paramsSkipped, if any)
+    - Rate     (already in model)
+
   Dependencies auto-included:         (depsAdded, if any)
     + Helper Calc
 
@@ -327,7 +359,10 @@ Ready to update "{model_name}":
 Proceed? (Y / N):
 ```
 
-Show the rewritten expressions from the script output, not the Answer originals. If N,
+Show the rewritten expressions from the script output, not the Answer originals. In
+`added`/`overwritten`/`skipped`, `name` is the Model name and `answerName` the Answer
+name; for a renamed formula (they differ) show `answerName → name`, e.g.
+`+ Revenue → Revenue Calc   MEASURE   →  ...`. If N,
 ask what to change and return to the relevant step.
 
 ---
@@ -341,6 +376,11 @@ Call **import metadata TML** with `metadata_tmls: [JSON.stringify(mergedTml)]`,
 first at the document root. That is what makes this an in-place update. See
 [references/api-shapes.md](references/api-shapes.md).
 
+**JSON fallback** (open-items.md, item 6). If the import rejects the JSON TML itself
+(a parse or format error, not a formula or column error), serialize `mergedTml` as YAML,
+keeping `guid` first and double-quoting any `expr` containing `[ ] { } :`, and import
+that string with the same options. Don't re-ask; the Step 8 Y covers the same content.
+
 Check the response element's `response.status.status_code`:
 
 - **`OK`**: check that `response.header.id_guid` equals `{model_guid}`. If it doesn't,
@@ -351,9 +391,10 @@ Check the response element's `response.status.status_code`:
 have edit access to "{model_name}". Ask the Model owner or an admin for MODIFY or FULL
 access.` Stop.
 - **Validation error**: show the exact message, and match it against
-  [references/tml-rules.md](references/tml-rules.md). If the fix is a mapping or an
-  expression edit, apply it through `refOverrides`/`exprOverrides`, re-run Step 7, show
-  the Step 8 checkpoint again, and retry only on a new Y.
+  [references/tml-rules.md](references/tml-rules.md). If the fix is a mapping, an
+  expression edit or a rename, apply it through `refOverrides`/`exprOverrides`/
+  `nameOverrides` (a `duplicate column name` clash needs a new name from the user), re-run
+  Step 7, show the Step 8 checkpoint again, and retry only on a new Y.
 
 ---
 
@@ -378,12 +419,13 @@ its Columns list to verify.
 
 | Symptom                                                | Action                                                                                                                                                                                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Session lookup returns 401                             | Bearer token expired. The consumer must re-authenticate                                                                                                                                                |
+| Session lookup returns 401                             | Session expired. Ask the user to reconnect the Spotter Code MCP server (`/mcp`)                                                                                                                        |
 | Answer TML has no `formulas[]`                         | See Step 3. The Answer has no saved custom formulas                                                                                                                                                    |
 | Data source is a Worksheet                             | See Step 6. Upgrade it to a Model in the UI first                                                                                                                                                      |
 | Import: 403 / UNAUTHORIZED                             | No edit access on the Model. See Step 5's ownership check                                                                                                                                              |
 | Import creates a second Model instead of updating      | `guid` was missing or not at the root, or `create_new` wasn't false. Delete the duplicate only after the user confirms, then fix and retry                                                             |
 | Import rejects `dynamic_default_date`                  | Older instances may not support it on Models. Ask the user for a static `default_value`, replace `dynamic_default_date` with it on that parameter in `mergedTml`, and show the Step 8 checkpoint again |
+| Import rejects the JSON TML format                     | See Step 9's JSON fallback. Import `mergedTml` as YAML                                                                                                                                                 |
 | Import error about formulas, columns or aggregation    | See the import-error table in [references/tml-rules.md](references/tml-rules.md)                                                                                                                       |
 | `get-rest-api-reference` has no entry for an operation | Stop and name the operation that couldn't be resolved. Never guess a path or shape                                                                                                                     |
 
@@ -391,6 +433,8 @@ its Columns list to verify.
 
 ## Changelog
 
-| Version | Date       | Summary                                                                                                                                                                                                                                       |
-| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.0.0   | 2026-09-24 | Moved from thoughtspot-agent-skills (`ts` CLI, v1.4.1) to REST API v2. The `ts model promote-formula` merge is ported to `scripts/promote_formulas.ts`. TML is exchanged as JSON; unresolved refs are fixed by re-running with `refOverrides` |
+| Version | Date       | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.2.0   | 2026-10-07 | Paginates Answer/Model search (shows 50, says how many more); Model search filters to the WORKSHEET subtype and labels `[MODEL]`/`[WORKSHEET]`; skipping an unresolved formula uses `excludeFormulas`; the script throws `No formulas selected for promotion.` on an empty selection, distinct from all-duplicates; new `nameOverrides` for name clashes (unknown keys and clashes between promoted formulas throw; reports carry `answerName`, shown as `answerName → name`); YAML fallback if JSON import is rejected; checkpoint shows `paramsSkipped`; ownership warning names the owner |
+| 1.1.0   | 2026-10-07 | Stops with one fixed message when the SpotterCode MCP tools are unavailable, instead of reporting server names, errors or auth config                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 1.0.0   | 2026-09-24 | Moved from thoughtspot-agent-skills (`ts` CLI, v1.4.1) to REST API v2. The `ts model promote-formula` merge is ported to `scripts/promote_formulas.ts`. TML is exchanged as JSON; unresolved refs are fixed by re-running with `refOverrides`                                                                                                                                                                                                                                                                                                                                                |

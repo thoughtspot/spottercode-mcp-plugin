@@ -28,13 +28,27 @@ Answer by name:
 }
 ```
 
-Model by name: the same, with `"type": "LOGICAL_TABLE"`. Model by GUID (auto-detect):
-`"metadata": [{ "identifier": "{data_source_guid}" }]`.
+**Paginate.** The response is a plain array. Repeat the call with `record_offset`
+increased by `record_size` until a page returns fewer than `record_size` elements, and
+concatenate the pages. Show at most the first 50 matches; if there are more, say how
+many and ask the user to narrow the term (or pick from the 50 shown).
+
+Model by name: the same, with `"type": "LOGICAL_TABLE"` plus the subtypes filter set to
+`WORKSHEET` (ts-cli sent `"subtypes": ["WORKSHEET"]` on the metadata entry; confirm the
+field with `get-rest-api-reference`). Without it, Tables and Views match too (open item
+7). Model by GUID (auto-detect): `"metadata": [{ "identifier": "{data_source_guid}" }]`.
 
 Each element carries `metadata_id`, `metadata_name`, `metadata_type`, and
-`metadata_header`. The header's `author` is the owner's user id. The header has no
-permission field (open item 2). The search response does not include an Answer's data
-source. Take that from the Answer TML (`answer.tables[0].fqn`).
+`metadata_header`. Header fields used:
+
+| Field                                  | Use                                                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `author`                               | Owner's user id, compared with the current user (Step 5)                                                                                   |
+| `authorDisplayName`                    | Owner's display name for the ownership warning (`authorName` if absent)                                                                    |
+| `contentUpgradeId`, `worksheetVersion` | `[MODEL]` if `contentUpgradeId` is `WORKSHEET_TO_MODEL_UPGRADE` or `MODEL_UPGRADE`, or `worksheetVersion` is `V2`; otherwise `[WORKSHEET]` |
+
+The header has no permission field (open item 2). The search response does not include
+an Answer's data source. Take that from the Answer TML (`answer.tables[0].fqn`).
 
 ---
 
@@ -65,7 +79,8 @@ GUIDs, which avoids "multiple data sources with same name" errors on import.
 }
 ```
 
-`metadata_tmls` takes TML strings, either YAML or JSON (JSON import is open item 5).
+`metadata_tmls` takes TML strings, either YAML or JSON (JSON import is open item 6). If
+JSON is rejected, send `mergedTml` serialized as YAML instead (SKILL.md Step 9).
 `create_new: false`, plus `guid` at the document root, makes this an in-place update. A
 `guid` nested under `model:` is ignored, and the import creates a duplicate Model.
 

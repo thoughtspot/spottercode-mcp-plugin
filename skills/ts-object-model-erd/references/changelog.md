@@ -1,0 +1,52 @@
+# ts-object-model-erd changelog
+
+| Version | Date       | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-10-07 | Ported from thoughtspot-agent-skills ts-object-model-erd 1.7.1 (and its shared `agents/shared/erd` library) to REST API v2 and the skills framework. The Python builder is ported to TypeScript in `scripts/` (no npm dependencies), function for function; the viewer (`renderer.js`, `renderer.css`) is copied into `assets/`. Live source uses the Spotter Code MCP tools instead of the `ts` CLI and profiles. See the differences below |
+
+## History of the CLI original (thoughtspot-agent-skills)
+
+| Version | Date       | Summary                                                                                                                                                                                                                                                                                                                                 |
+| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.7.1   | 2026-07-22 | Independent questions may be batched in a single prompt                                                                                                                                                                                                                                                                                 |
+| 1.7.0   | 2026-07-03 | **Group by** subject areas: Name prefix, Graph cluster (deterministic Louvain-style community detection) and Fact neighbourhood. Coloured node stripe, tinted overview block and a clickable legend that only ever dims. `esc()` escapes quotes. Review-notes panel refreshes after Clear notes                                         |
+| 1.6.0   | 2026-07-03 | Notes UX: immediate Saved/Deleted feedback with Delete reachable without a reload; **Notes** filter chip (works at overview zoom and with notes baked into a shared file); **Review notes** panel that jumps to each noted object and lists stale notes as "not in model"                                                               |
+| 1.5.0   | 2026-07-02 | Semantic zoom: non-scaling borders, and below 0.5× tables render as bold colour-coded overview blocks (AA-contrast fills), so large Models stay legible at fit zoom                                                                                                                                                                     |
+| 1.4.1   | 2026-07-02 | The parser drops (and logs) a join whose target isn't in the Model, instead of guarding for it in the viewer. Join counts are honest                                                                                                                                                                                                    |
+| 1.4.0   | 2026-07-02 | Large-model navigation: scroll pans, pinch or ⌘/Ctrl-scroll zooms, arrow keys and `+`/`-`/`0`; always-on minimap; a 0.12× zoom floor; fit to the focused neighbourhood; search zooms to a readable level. Fixed a crash on a degraded-fidelity join                                                                                     |
+| 1.3.0   | 2026-07-02 | The builder ingests a `ts tml export` JSON dump directly and routes objects by content, not file name. Exits non-zero when there is no Model. RLS is no longer modelled as propagating along joins: tables are secured (rule defined on them) or in RLS path (named in another table's rule). Column inspector groups are flat sections |
+| 1.2.0   | 2026-07-02 | `--ai-analysis` injects an agent-synthesized business-context corpus (read-only). Column inspector shows AI context and synonyms. RLS legend parity. Focus hides out-of-scope tables. Handles the nested `rls_rules: {rules: [...]}` shape                                                                                              |
+| 1.1.1   | 2026-07-02 | A table is a fact only when it has visible measures; measureless pass-through tables are bridges. Fan-out join click no longer errors                                                                                                                                                                                                   |
+| 1.1.0   | 2026-07-02 | Layered layout clusters joined tables; dimension/fact classifier fix; parser and assembler moved to the shared `erd` library                                                                                                                                                                                                            |
+| 1.0.0   | 2026-07-01 | Initial release                                                                                                                                                                                                                                                                                                                         |
+
+## Intentional differences from the CLI original
+
+| Difference              | CLI original (1.7.1)                                                    | This skill                                                                                                                      |
+| ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Sign-in                 | `ts` CLI with a saved profile (`/ts-profile-thoughtspot`)               | Spotter Code MCP connection; never asks for a URL, token or credentials                                                         |
+| Tools check             | None                                                                    | Live source only, with the fixed "not connected" message. Local files need no MCP server                                        |
+| Model listing           | `ts metadata search --subtype ONE_TO_ONE_LOGICAL --all` (lists Tables)  | **search metadata** for `LOGICAL_TABLE` + subtype `WORKSHEET`, paginated, labelled `[MODEL]`/`[WORKSHEET]`; only Models offered |
+| Export                  | `ts tml export --fqn --associated` (YAML edocs), several GUIDs per call | **export metadata TML** with `export_associated`, `export_fqn`, `edoc_format: "JSON"`, one Model per call                       |
+| Language                | Python 3.9 + pyyaml                                                     | TypeScript run with `npx tsx`, no npm dependencies                                                                              |
+| YAML                    | Reads YAML and JSON TML                                                 | JSON only. A non-JSON source file stops the build and is named; a YAML `edoc` inside a JSON export is skipped with a log line   |
+| No-Model message        | Mentions `ts tml export --associated` and `model:` blocks               | Mentions the export metadata TML dump and JSON TML; otherwise the same, and still exits non-zero                                |
+| Embedded data           | `json.dumps` (spaced separators, raw `<`)                               | `JSON.stringify` with `<` written as `<`, so `</script>` in a name can't break the page. The parsed data is identical           |
+| Null containers         | A null `model`, `table`, `model_tables`, `formulas` or `columns` raises | Treated as empty                                                                                                                |
+| Viewer assets           | Byte-for-byte source                                                    | Same code, reformatted by the repo's prettier; `renderer.js` gains an `eslint-disable` header for the pre-commit hook           |
+| AI-analysis default     | `--ai-analysis` off, though Step 4 is "optional but recommended"        | Asked in Step 1, default yes; the flag is passed only when Step 4 ran                                                           |
+| Options                 | CLI flags shown in the plan                                             | Asked as questions in Step 1, then passed as the same flags                                                                     |
+| Default output location | `model_erd.html` in the working directory                               | Suggests `~/thoughtspot-exports/model_erd.html`, outside any repository; export JSON and the AI corpus go there too             |
+
+## Parity check (2026-10-07)
+
+The original Python (`build_erd.py` with the shared `erd` library, pyyaml 6.0.3) and the
+TypeScript port were run on the same inputs: the mini fixtures with and without Table
+TMLs, and a synthetic Model covering aliases, inline and referencing joins, a dropped
+join, nested and flat `rls_rules`, hidden measures, formula routing, empty-list
+truthiness, unicode and `</script>` text, a 3-Model cap of 2, an AI corpus matched by
+guid and by name, and RLS redaction. Each case ran three ways (separate files, one
+export dump, a folder): YAML for Python, JSON for TypeScript. In all 12 runs the embedded
+data bundle was identical (including key order), the log lines were identical, and the
+HTML outside the data, CSS and JS blocks was identical. The original's 24 pytest tests
+pass, and are ported to vitest in `tests/`.

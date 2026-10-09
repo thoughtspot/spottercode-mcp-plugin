@@ -46,15 +46,18 @@ instance that:
   (including `guid` at the root, and `formulas[].was_auto_generated`)
 - import accepts a JSON TML string, with `create_new: false` updating in place
 
-If JSON import is rejected, serialize `mergedTml` to YAML (double-quote any `expr`
-containing `[ ] { } :`) and import that instead.
+If JSON import is rejected, SKILL.md Step 9 falls back to serializing `mergedTml` as
+YAML (double-quote any `expr` containing `[ ] { } :`) and importing that instead.
 
 [Record result here]
 
 ## 7. Model lookup by LOGICAL_TABLE search — UNVERIFIED
 
-Step 5's fallback searches type `LOGICAL_TABLE`, which also returns Tables and Views.
-The Model check happens after export (a top-level `model` key). Confirm whether a
-subtype filter can narrow the search to Models only.
+Step 5's name search uses type `LOGICAL_TABLE` with the subtypes filter set to
+`WORKSHEET`, as ts-cli did (`--subtype WORKSHEET`), to leave out Tables and Views. That
+subtype still returns legacy Worksheets alongside Models; results are labelled
+`[MODEL]`/`[WORKSHEET]` from `contentUpgradeId`/`worksheetVersion` in the header. Confirm
+against REST v2 that the filter excludes Tables and Views, and that both header fields
+are present. The export check in Step 6 (a top-level `model` key) stays authoritative.
 
 [Record result here]

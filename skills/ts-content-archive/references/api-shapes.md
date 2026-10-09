@@ -1,7 +1,8 @@
 # API Shapes
 
 Field names and payload shapes this skill relies on, for REST API v2.0 (`api/rest/2.0`).
-They match the calls the cs_tools `archiver` tool makes (`cs_tools/api/client.py`).
+They follow the calls the cs_tools `archiver` tool makes (`cs_tools/api/client.py`);
+where this skill differs (tag batching, the delete-tag fallback), the section says so.
 Always resolve the exact operation and path with `get-rest-api-reference` before calling.
 This file documents shapes, never paths.
 
@@ -72,7 +73,14 @@ each row is an array in `column_names` order. Page with `record_offset` until
 
 Query strings, exactly as cs_tools builds them:
 
-- Earliest activity: `min [Timestamp]`, which returns column `Minimum Timestamp`.
+- Earliest activity: `min [Timestamp]`, which returns column `Minimum Timestamp`. In
+  `COMPACT` format its single cell (`data_rows[0][0]`) is wrapped as
+  `{"v": {"s": <value>}}`; cs_tools unwraps it to `.v.s` (`_convert_compact_to_full`) and
+  casts it with `datetime.fromtimestamp`, so the value is epoch **seconds**. Treat any
+  value > 1e12 as milliseconds. Lookback days = `floor((now_s - min_s) / 86400) + 1`.
+  On Software clusters with a non-UTC timezone, cs_tools relabels
+  `fromtimestamp(tz=cluster)` as UTC without converting (`app.py` ~166), so its lookback
+  can differ by a day; this raw-epoch formula is the intended, correct value.
 - One activity window:
   `[user action] != [user action].answer_unsaved [answer book guid] != '{null}' [answer book guid] [timestamp] >= '{beg} days ago' [timestamp] < '{end} days ago'`.
   If Orgs are enabled, add ` [Org Name].'{org_name}'` before the timestamp tokens. The
@@ -103,20 +111,28 @@ visited set. The field name `sub_groups` is open item 2 in
 ## Search users (Step 5, author filters and system accounts)
 
 `{"user_identifier": "{name or email}"}` or `{"name_pattern": "%{term}%"}`. Each element
-has `id` and `name`. Use `id` as the author GUID.
+has `id` and `name`. Use `id` as the author GUID. For system accounts, look up exactly
+`tsadmin`, `system` and `su` by `user_identifier` and keep only an exact name match.
 
 ---
 
-## Tags (Identify Step 8, Untag Step 8, Remove Step 8)
+## Tags (Identify Step 8, Untag Steps 3 and 6, Remove Step 8)
 
+- **Search tags** (Untag Step 3): returns `[{id, name, ...}]`. Match `name`
+  case-insensitively, as cs_tools `untag` does (`casefold`).
 - **Create tag**: `{name, color}`. cs_tools uses `color: "#A020F0"`. An "already exists"
   error is not a failure; reuse the tag.
 - **Assign tag**: `{metadata: [{identifier: "{guid}", type: "{ANSWER|LIVEBOARD}"}, ...],
-tag_identifiers: ["{tag_name}"]}`. One call can carry many objects. Send batches of up
-  to 100.
-- **Unassign tag**: the same shape as assign. It removes the association only; the tag
-  stays defined.
-- **Delete tag**: the tag's id or name goes in the **path**. There is no body. Success is 204.
+tag_identifiers: ["{tag_name}"]}`. One call can carry many objects. This skill sends
+  batches of up to 100; cs_tools sends one object per call. If a batch errors, retry
+  that batch one object per call and report each object that still fails.
+- **Unassign tag**: the same shape as assign, with the same batching and retry. It
+  removes the association only; the tag stays defined.
+- **Deleting the tag** (Untag choice b, Remove Step 8): cs_tools does **not** use the
+  delete tag operation. It calls **delete metadata** with the tag's GUID,
+  `{"metadata": [{"identifier": "{tag_id}"}]}`, which removes the tag from every object
+  type. This skill does the same. Fallback only if that is rejected: the **delete tag**
+  operation, with the tag's id in the **path** and no body. Success is 204 for both.
 
 ---
 
@@ -136,7 +152,7 @@ Each element has `edoc` (the TML text), `info.type` (for example `liveboard` or
 
 ---
 
-## Delete metadata (Remove Step 8)
+## Delete metadata (Remove Step 8, and the tag in Untag choice b)
 
 POST with a JSON body:
 

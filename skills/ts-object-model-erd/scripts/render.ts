@@ -1,0 +1,201 @@
+/**
+ * Render an assembled ERD bundle into a single self-contained HTML file.
+ *
+ * Port of thoughtspot-agent-skills `agents/shared/erd/render.py`. BODY is the
+ * Python `_BODY` string verbatim; `assets/renderer.css` and `assets/renderer.js`
+ * are the shared ERD viewer, inlined so the file needs no network access.
+ *
+ * Deliberate difference: `<` in the embedded data is written as `<`, so a
+ * name or description containing `</script>` can't end the data block early. The
+ * parsed data is identical.
+ */
+import fs from 'fs';
+import path from 'path';
+import type { ErdBundle } from './erd_data';
+
+const ASSETS_DIR = path.join(__dirname, '..', 'assets');
+
+function asset(name: string): string {
+	return fs.readFileSync(path.join(ASSETS_DIR, name), 'utf8');
+}
+
+// prettier-ignore
+export const BODY = `<header>
+  <div class="brand">
+    <span class="eyebrow">ThoughtSpot Model · ERD</span>
+    <h1></h1>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="s-tables">0</b><span>Tables</span></div>
+    <div class="stat"><b id="s-joins">0</b><span>Joins</span></div>
+    <div class="stat crit"><b id="s-crit">0</b><span>Critical</span></div>
+    <div class="stat warn"><b id="s-warn">0</b><span>Warnings</span></div>
+    <div class="stat rls"><b id="s-rls">0</b><span>RLS rules</span></div>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="ctl-group">
+    <span class="group-label">Layout</span>
+    <div class="seg" id="layout-seg">
+      <button data-l="organic" class="on">Organic</button>
+      <button data-l="star">Star</button>
+      <button data-l="lr">Layered →</button>
+      <button data-l="tb">Layered ↓</button>
+    </div>
+    <button class="minibtn reset-btn" id="reset-pos" title="Restore auto-layout for this view">⟲ Reset</button>
+    <span class="saved-badge" id="saved-badge" title="Manual positions saved for this layout">saved</span>
+    <label class="toggle" id="orth-wrap" title="Right-angle edge routing" style="opacity:.4"><input type="checkbox" id="orth-toggle" disabled> Orthogonal</label>
+  </div>
+  <div class="ctl-group">
+    <span class="group-label">Display</span>
+    <div class="seg" id="notation-seg">
+      <button data-n="arrow" class="on" title="ThoughtSpot-style directional arrows">Arrow</button>
+      <button data-n="crow" title="Crow's foot — shows cardinality">Crow's foot</button>
+    </div>
+    <select id="col-mode">
+      <option value="collapsed">Collapsed</option>
+      <option value="keys" selected>Join keys</option>
+      <option value="flagged">Flagged only</option>
+      <option value="all">All columns</option>
+    </select>
+    <label class="toggle"><input type="checkbox" id="findings-toggle" checked> Findings</label>
+  </div>
+  <div class="ctl-group">
+    <span class="group-label">Group by</span>
+    <select id="group-mode" title="Color tables by subject area — non-destructive, no layout change">
+      <option value="none" selected>None</option>
+      <option value="prefix">Name prefix</option>
+      <option value="cluster">Graph cluster</option>
+      <option value="fact">Fact neighbourhood</option>
+    </select>
+  </div>
+  <div class="ctl-group">
+    <span class="group-label">Search</span>
+    <input id="finder" list="tablelist" placeholder="table name…" autocomplete="off">
+    <datalist id="tablelist"></datalist>
+  </div>
+  <div class="ctl-group">
+    <span class="group-label">Filter</span>
+    <div class="filter-chips" id="filter-chips">
+      <button class="fchip on" data-f="all">All</button>
+      <button class="fchip" data-f="fact">Fact</button>
+      <button class="fchip" data-f="dim">Dim</button>
+      <button class="fchip" data-f="sql_view">SQL View</button>
+      <button class="fchip" data-f="alias">Alias</button>
+      <button class="fchip" data-f="rls">RLS</button>
+      <button class="fchip" data-f="rls_subgraph">RLS subgraph</button>
+      <button class="fchip" data-f="notes">Notes</button>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="ctl-group actions">
+    <button class="minibtn" id="share-btn" title="Download self-contained HTML with positions and notes baked in">Share HTML</button>
+    <button class="minibtn" id="notes-review-btn" title="List every note in this model">Review notes</button>
+    <button class="minibtn" id="clear-notes-btn" title="Remove all notes">Clear notes</button>
+    <button class="minibtn" id="help-btn" title="Legend and keyboard shortcuts">? Help</button>
+  </div>
+</div>
+
+<main>
+  <div class="canvas-wrap">
+    <svg id="svg" role="img" aria-label="Entity relationship diagram">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9AA4B1"/></marker>
+        <marker id="arrow-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C2382E"/></marker>
+        <marker id="arrow-rls" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#C2382E"/></marker>
+        <marker id="arrow-sel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1E6FA8"/></marker>
+      </defs>
+      <g id="viewport"><g id="edges"></g><g id="nodes"></g></g>
+    </svg>
+    <div class="ctrls">
+      <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+      <button id="zoom-fit" title="Fit to view" aria-label="Fit to view">⤢</button>
+    </div>
+    <div class="minimap" id="minimap">
+      <button class="minimap-toggle" id="minimap-toggle" title="Hide overview">–</button>
+      <svg id="minimap-svg" aria-hidden="true"><g id="minimap-nodes"></g><rect id="minimap-view"></rect></svg>
+    </div>
+    <div class="hint" id="hint">drag or scroll to pan · pinch / ⌘-scroll to zoom · arrows / 0 to move</div>
+    <div class="grp-legend" id="grp-legend" hidden></div>
+  </div>
+  <aside id="inspector"></aside>
+</main>
+<div class="help-drawer" id="help-drawer">
+  <button class="close" id="help-close" aria-label="Close help">×</button>
+  <h2>ERD Help</h2>
+  <div class="section-label">Legend</div>
+  <div class="help-legend">
+    <div class="swatch" style="background:var(--accent-soft);border-color:var(--accent)"></div><span><b>Fact table</b> — has measures or outgoing joins</span>
+    <div class="swatch" style="background:var(--dim-fill);border-color:var(--dim-stroke)"></div><span><b>Dimension</b> — joined to by facts</span>
+    <div class="swatch" style="background:#FBE9E7;border-color:#C2382E"></div><span><b>RLS secured</b> — has row-level security rules</span>
+    <div class="swatch" style="background:#FEF3C7;border-color:#D97706"></div><span><b>In RLS path</b> — referenced in another table’s RLS expression</span>
+    <div class="swatch" style="background:#F0FDFA;border-color:#0D9488"></div><span><b>SQL View</b> — backed by a SQL query, not a physical table</span>
+    <div class="swatch" style="background:#F5F3FF;border-color:#7C3AED"></div><span><b>Alias</b> — a second reference to the same physical table</span>
+  </div>
+  <div class="section-label">Join lines</div>
+  <div class="help-legend">
+    <div style="width:30px;height:0;border-top:2px solid #9AA4B1"></div><span><b>Normal</b> — standard join (solid grey)</span>
+    <div style="width:30px;height:0;border-top:2px dashed #9AA4B1"></div><span><b>Flagged</b> — fan-out: same dimension joined by 2+ facts (dashed grey)</span>
+    <div style="width:30px;height:0;border-top:3px solid #1E6FA8"></div><span><b>Selected / path</b> — active selection or traced join path (solid blue)</span>
+    <div style="width:30px;height:0;border-top:2px solid #D97706"></div><span><b>Annotated</b> — join has a user note attached (solid amber)</span>
+  </div>
+  <div class="section-label">Edge badges</div>
+  <div class="help-legend">
+    <div style="background:var(--accent);color:#fff;width:20px;height:16px;border-radius:3px;display:grid;place-items:center;font-size:9px;font-weight:700">M</div><span><b>Model-local</b> — join defined in this model only</span>
+    <div style="background:var(--dim-fill);color:var(--muted);width:20px;height:16px;border-radius:3px;display:grid;place-items:center;font-size:9px;font-weight:700">T</div><span><b>Table-level</b> — reusable join from table TML</span>
+  </div>
+  <div class="section-label">Interactions</div>
+  <div class="help-shortcut"><kbd>Click</kbd> table — focus on table and its neighbours</div>
+  <div class="help-shortcut"><kbd>Shift+Click</kbd> table — compare multiple tables, trace join path</div>
+  <div class="help-shortcut"><kbd>Double-click</kbd> table — show full connected component</div>
+  <div class="help-shortcut"><kbd>Click</kbd> edge — inspect join definition</div>
+  <div class="help-shortcut"><kbd>Click</kbd> empty space — return to model overview</div>
+  <div class="help-shortcut"><kbd>Drag</kbd> table — reposition (auto-saved)</div>
+  <div class="help-shortcut"><kbd>Drag</kbd> or <kbd>Scroll</kbd> empty canvas — pan the view</div>
+  <div class="help-shortcut"><kbd>Pinch</kbd> / <kbd>⌘/Ctrl</kbd>+Scroll — zoom in/out</div>
+  <div class="help-shortcut"><kbd>Arrow keys</kbd> — pan the view</div>
+  <div class="help-shortcut"><kbd>+</kbd> / <kbd>-</kbd> — zoom in/out</div>
+  <div class="help-shortcut"><kbd>0</kbd> — fit to view (or to the focused neighbourhood)</div>
+  <div class="help-shortcut"><kbd>Click</kbd> / drag minimap — jump to that area</div>
+  <div class="help-shortcut"><kbd>/</kbd> — focus search box</div>
+  <div class="help-shortcut"><kbd>?</kbd> — toggle this help panel</div>
+  <div class="help-shortcut"><kbd>Esc</kbd> — close this panel</div>
+  <div class="section-label">Reading the joins</div>
+  <p class="sub">Each join carries a midpoint badge: <b style="background:#1E6FA8;color:#fff;border-radius:3px;padding:1px 5px;font-family:var(--mono)">M</b> = model-local (defined in this model only), <b style="background:#EDEFF2;color:#6B7480;border-radius:3px;padding:1px 5px;font-family:var(--mono)">T</b> = table-level (reusable, can ripple to other models). Switch <b>Notation</b> to <b>Crow's foot</b> to read cardinality instead of TS-style arrows. Click any join for its type, cardinality and definition.</p>
+  <div class="section-label">Notes</div>
+  <p class="sub">Add notes to any table or join via the side panel. Notes persist in your browser and travel with <b>Share HTML</b> exports. Use the <b>Notes</b> filter chip to highlight every noted object at any zoom level (it stays enabled as long as a note exists, including notes baked into a shared file). <b>Review notes</b> lists every note at once — table/join rows jump to that object, and each row can be deleted inline.</p>
+  <div class="section-label">Group by</div>
+  <p class="sub"><b>Group by</b> colors tables into subject areas — a non-destructive overlay, never a layout change. <b>Name prefix</b> tokenizes each table id (e.g. <code>W_SFDC_ACCOUNT</code> → <b>Sfdc</b>). <b>Graph cluster</b> detects communities from the join graph — a hub-centric model may legitimately collapse to very few groups. <b>Fact neighbourhood</b> assigns every table to its nearest fact table by join distance — a model with many facts fragments into many groups. Each mode shows its own legend (swatch + label + count) top-left; click a legend row to dim everything outside that group (it only ever dims, never hides); click again — or switch mode, load a model, or click an empty area of the canvas — to clear the highlight. Switching modes or loading a model always resets to <b>None</b>.</p>
+  <div class="section-label">Share HTML</div>
+  <p class="sub">Downloads a self-contained HTML file with your current layout positions and notes baked in. The recipient sees your view on first load.</p>
+</div>`;
+
+export function renderHtml(bundle: ErdBundle, opts: { title?: string } = {}): string {
+	const title = opts.title ?? 'Model ERD';
+	const css = asset('renderer.css');
+	const js = asset('renderer.js');
+	const data = JSON.stringify(bundle).replace(/</g, '\\u003c');
+	// Concatenation, not String.replace, so `$` sequences in the assets are left alone.
+	return (
+		'<!doctype html>\n' +
+		'<html lang="en"><head><meta charset="utf-8">\n' +
+		'<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+		`<title>${title}</title>\n` +
+		`<style>${css}</style></head>\n` +
+		`<body>${BODY}\n` +
+		`<script id="erd-data">window.__ERD_DATA__ = ${data};</script>\n` +
+		`<script>${js}</script>\n` +
+		'</body></html>'
+	);
+}
+
+export function writeHtml(
+	bundle: ErdBundle,
+	outPath: string,
+	opts: { title?: string } = {},
+): string {
+	fs.writeFileSync(outPath, renderHtml(bundle, opts), 'utf8');
+	return outPath;
+}

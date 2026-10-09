@@ -8,7 +8,7 @@ None of these has been checked against a live instance yet.
 The source CLI documents each entry in a variable's `values[]` as having a `value` field
 (singular). The write-path payload uses `assigned_values` (a plural array). These are
 different sides of the API, so they aren't necessarily inconsistent. The read shape was
-never confirmed, though. Before extracting a current value (Search Flow, Step 6 Remove),
+never confirmed, though. Before extracting a current value (Search Flow, Step 5 lookup),
 inspect one real element, and use whichever key is present.
 
 [Record result here]

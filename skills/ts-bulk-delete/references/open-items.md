@@ -27,3 +27,12 @@ cs_tools resolved tags through a general metadata fetch instead. Confirm the req
 and the response's name/id fields.
 
 [Record result here]
+
+## 4. Search by identifier alone for Connections — UNVERIFIED
+
+A metadata search that gives only an `identifier`, with no `type`, may not return
+`CONNECTION` objects. In the GUID-list path, Step 4 retries each missing GUID once with
+type `CONNECTION` before marking it not found. Check whether the untyped search returns
+Connections. If it does, the retry can be dropped.
+
+[Record result here]

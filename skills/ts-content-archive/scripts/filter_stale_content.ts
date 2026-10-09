@@ -27,8 +27,9 @@
  *      is a Cloudflare Workers isolate, and the tool's `code` parameter is
  *      spliced into `async () => { ${code} }` — no `process`, no stdin, no
  *      module system, just a function body that must `return` its result).
- *      For this path: copy ONLY the `filterStaleContent` function (and its
- *      types, inlined as plain objects if the target has no TS support) into
+ *      For this path: copy ONLY `filterStaleContent`, its `isStale` helper and
+ *      the constants above them (and its types, inlined as plain objects if
+ *      the target has no TS support) into
  *      the `code` string, call it with the in-scope data, and `return` its
  *      result. Do not include the CLI wrapper below — `process` doesn't
  *      exist there and would throw.
@@ -46,7 +47,7 @@
  *     }, ...
  *   ],
  *   "recentModifiedDays": 100,
- *   "systemAuthorGuids": ["tsadmin-guid", "system-guid"],
+ *   "systemAuthorGuids": ["tsadmin-guid", "system-guid", "su-guid"],
  *   "ignoreTags": null,
  *   "onlyAuthorGuids": null,
  *   "ignoreAuthorGuids": null,
@@ -60,11 +61,22 @@
  * GROUP membership (resolved to a set of member GUIDs before calling this).
  * Both pairs may be supplied at once; all supplied conditions must hold.
  *
+ * System accounts (`SYSTEM_ACCOUNT_NAMES`: tsadmin, system, su) are always
+ * excluded: by `systemAuthorGuids`, and by exact case-insensitive `authorName`.
+ *
  * Output shape (same for both paths):
  * { "filtered": [ ...same shape as input metadata rows, plus "daysInactive"... ], "count": <number> }
  */
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The fixed list of ThoughtSpot built-in accounts whose content is never a
+ * candidate: the three cs_tools reads from session info (`tsadmin_user_id`,
+ * `system_user_id`, `super_user_id`). cs_tools' `identify` docstring promises
+ * this exclusion but never applies it; this skill applies it intentionally.
+ */
+export const SYSTEM_ACCOUNT_NAMES = ['tsadmin', 'system', 'su'] as const;
 
 interface Tag {
 	id: string;
@@ -129,7 +141,15 @@ function isStale(
 	const daysSinceModified = (opts.todayMs - obj.modifiedEpochMs) / MS_PER_DAY;
 	if (daysSinceModified < opts.recentModifiedDays) return false;
 
+	// System accounts: by resolved GUID, and by exact (case-insensitive) author
+	// name as a backstop for an id the caller couldn't resolve.
 	if (opts.systemAuthorGuids.has(obj.authorGuid)) return false;
+	if (
+		typeof obj.authorName === 'string' &&
+		(SYSTEM_ACCOUNT_NAMES as readonly string[]).includes(obj.authorName.toLowerCase())
+	) {
+		return false;
+	}
 
 	if (opts.onlyAuthors !== null && !opts.onlyAuthors.has(obj.authorGuid)) return false;
 
